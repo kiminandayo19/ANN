@@ -1,156 +1,211 @@
 #include "./tensor.h"
 
-void is_valid_len(int32 len)
+/* =={Checker & Utils Method}== */
+
+int64 get_size(size_t ndim, int64 *shape)
 {
-  if (len < 0) {
-    printf("Tensor len cannot be less or equal zero\n");
+  if (ndim <= 0) {
+    printf("Invalid tensor dim\n");
+    exit(1);
+  }
+  int64 size = 1;
+  for (int32 i=0; i<ndim; i++)
+    size *= shape[i];
+  return size;
+}
+
+static int64 is_same_shape_entry(Tensor *a, Tensor *b)
+{
+  int64 size = get_size(a->ndim, a->shape);
+  for (int32 i=0; i<size; i++) {
+    if (a->shape[i] != b->shape[i]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static void is_same_shape(Tensor *a, Tensor *b)
+{
+  if (a->ndim != b->ndim) {
+    printf("Different dim\n");
+    exit(1);
+  }
+
+  if ((is_same_shape_entry(a, b)) == 0) {
+    printf("Different shape entry\n");
     exit(1);
   }
 }
 
-void is_success_allocate(Tensor *tensor)
+static void is_valid_matvec_mul(Tensor *a, Tensor *b)
 {
-  if (tensor->value == NULL) {
-    printf("Failed to allocate memory\n");
+  if (a->shape[1] != b->shape[0]) {
+    printf("Invalid Shape\n");
     exit(1);
   }
 }
 
-void is_same_length(Tensor *tensor1, Tensor *tensor2)
+void free_tensor(Tensor *tensor)
 {
-  if (tensor1->col != tensor2->col) {
-    printf("Two tensor need to have same lenght\n");
+  free(tensor->value);
+}
+
+Tensor initialize(size_t ndim, int64 *shape)
+{
+  int64 size = get_size(ndim, shape);
+  Tensor init = {
+    .ndim = ndim,
+    .shape = shape,
+    .dtype = "float64",
+    .value = (float64*)malloc(size * sizeof(float64)),
+  };
+  if (init.value == NULL) {
+    printf("Failed to alocate memory\n");
     exit(1);
   }
+  return init;
 }
 
-Tensor initialize(int32 len, ...)
+/* =={Assign Method}== */
+
+void assign_scalar(Tensor *tensor, float64 scalar)
 {
-  va_list args;
-  va_start(args, len);
-  Tensor tensor;
-  tensor.row = va_arg(args, size_t);
-  tensor.row = (tensor.row == 0) ? 1 : tensor.row;
-  va_end(args);
-  tensor.col = len;
-  strcpy(tensor.dtype, "float32");
-  tensor.value = (float32*)malloc(len * tensor.row * sizeof(float32));
-  is_success_allocate(&tensor);
-  return tensor;
+  int64 size = get_size(tensor->ndim, tensor->shape);
+  memset(tensor->value, scalar, size);
 }
 
-void assign(Tensor *tensor, float32 *values)
+void assign_values(Tensor *tensor, float64 *values)
 {
-  for (int i=0; i<tensor->col; i++)
+  int64 size = get_size(tensor->ndim, tensor->shape);
+  for (int32 i=0; i<size; i++)
     tensor->value[i] = values[i];
 }
 
-double generate_random_normal(void)
+static float64 gaussian_sample(float64 mu, float64 stdev)
 {
   static float64 z0, z1;
+  static float64 threshold = 1e-7;
   static int32 generate;
-  float64 mean = 0.0;
-  float64 stdev = 1.0;
   generate = !generate;
 
-  if (!generate)
-    return z1 * stdev + mean;
+  if (!generate) return z1 * stdev + mu;
 
   float64 u1, u2;
   do {
     u1 = rand() * (1.0 / RAND_MAX);
     u2 = rand() * (1.0 / RAND_MAX);
-  } while (u1 <= 1e-7);
+  } while (u1 <= threshold);
 
   float64 R = sqrt(-2.0 * log(u1));
   float64 theta = 2.0 * M_PI * u2;
   z0 = R * cos(theta);
   z1 = R * sin(theta);
-  return z0 * stdev + mean;
+  return z0 * stdev + mu;
 }
 
-Tensor randn(int32 len, ...)
+/* =={Init Tensor With Value Method}== */
+
+Tensor zeros(size_t ndim, int64 *shape)
 {
-  va_list args;
-  va_start(args, len);
-  int row = va_arg(args, int);
-  row = (row == 0) ? 1 : row;
-  Tensor tensor = initialize(len, row);
-  va_end(args);
-  for (int i=0; i<tensor.col * row; i++)
-    tensor.value[i] = generate_random_normal();
+  Tensor tensor = initialize(ndim, shape);
+  assign_scalar(&tensor, 0.0);
   return tensor;
 }
 
-Tensor zeros(int32 len, ...)
+Tensor ones(size_t ndim, int64 *shape)
 {
-  va_list args;
-  va_start(args, len);
-  size_t row = va_arg(args, int32);
-  row = (row == 0) ? 1 : row;
-  Tensor tensor = initialize(len, row);
-  va_end(args);
-
-  size_t size = tensor.col * row;
-  memset(tensor.value, 0.0, size);
+  Tensor tensor = initialize(ndim, shape);
+  assign_scalar(&tensor, 1.0);
   return tensor;
 }
 
-Tensor ones(int32 len, ...)
+Tensor randn(size_t ndim, int64 *shape)
 {
-  va_list args;
-  va_start(args, len);
-  size_t row = va_arg(args, int32);
-  Tensor tensor = initialize(len, row);
-  va_end(args);
-
-  size_t size = tensor.col * row;
-  memset(tensor.value, 1.0, size);
-  return tensor;
-}
-
-Tensor add(Tensor *tensor1, Tensor *tensor2)
-{
-  is_same_length(tensor1, tensor2);
-  Tensor tensor = initialize(tensor1->col);
-  for (int i=0; i<tensor.col; i++) {
-    tensor.value[i] = tensor1->value[i] + tensor2->value[i];
+  Tensor tensor = initialize(ndim, shape);
+  int64 size = get_size(ndim, shape);
+  for (int32 i=0; i<size; i++) {
+    tensor.value[i] = gaussian_sample(0.0, 1.0);
   }
   return tensor;
 }
 
-Tensor substract(Tensor *tensor1, Tensor *tensor2)
+Tensor cust_randn(
+  size_t ndim,
+  int64 *shape,
+  float64 mu,
+  float64 stdev
+) {
+  Tensor tensor = initialize(ndim, shape);
+  int64 size = get_size(ndim, shape);
+  for (int32 i=0; i<size; i++)
+    tensor.value[i] = gaussian_sample(mu, stdev);
+  return tensor;
+}
+
+/* =={Tensor Manipulation Method}== */
+
+Tensor add(Tensor *a, Tensor *b)
 {
-  is_same_length(tensor1, tensor2);
-  Tensor tensor = initialize(tensor1->col);
-  for (int i=0; i<tensor.col; i++) {
-    tensor.value[i] = tensor1->value[i] - tensor2->value[i];
+  is_same_shape(a, b);
+  Tensor tensor = initialize(a->ndim, a->shape);
+  int64 size = get_size(tensor.ndim, tensor.shape);
+  for (int32 i=0; i<size; i++)
+    tensor.value[i] = a->value[i] + b->value[i];
+  return tensor;
+}
+
+Tensor substract(Tensor *a, Tensor *b)
+{
+  is_same_shape(a, b);
+  Tensor tensor = initialize(a->ndim, a->shape);
+  int64 size = get_size(tensor.ndim, tensor.shape);
+  for (int32 i=0; i<size; i++)
+    tensor.value[i] = a->value[i] - b->value[i];
+  return tensor;
+}
+
+Tensor scalar_mul(float64 k, Tensor *in)
+{
+  Tensor tensor = initialize(in->ndim, in->shape);
+  int64 size = get_size(tensor.ndim, tensor.shape);
+  for (int32 i=0; i<size; i++)
+    tensor.value[i] = (k) * (in->value[i]);
+  return tensor;
+}
+
+Tensor element_mul(Tensor *a, Tensor *b)
+{
+  is_same_shape(a, b);
+  Tensor tensor = initialize(a->ndim, a->shape);
+  int64 size = get_size(tensor.ndim, tensor.shape);
+  for (int32 i=0; i<size; i++)
+    tensor.value[i] = a->value[i] * b->value[i];
+  return tensor;
+}
+
+Tensor matrix_vector_mul(Tensor *W, Tensor *x)
+{
+  /* Currently only work for matrix vector op */
+  is_valid_matvec_mul(W, x);
+  Tensor tensor = initialize(1, &W->shape[0]);
+  for (int32 i=0; i<W->shape[0]; i++) {
+    float64 sum = 0.0;
+    for (int32 j=0; j<W->shape[1]; j++) {
+      sum += W->value[i * W->shape[1] + j] * x->value[j];
+    }
+    tensor.value[i] = sum;
   }
   return tensor;
 }
 
-float32 dot_product(Tensor *tensor1, Tensor *tensor2)
+/* =={Other}== */
+void print_tensor(Tensor *tensor)
 {
-  is_same_length(tensor1, tensor2);
-  float32 result = 0.0;
-  for (int i=0; i<tensor1->col; i++)
-    result += (tensor1->value[i] * tensor2->value[i]);
-  return result;
-}
-
-Tensor element_wise(Tensor *tensor1, Tensor *tensor2)
-{
-  is_same_length(tensor1, tensor2);
-  Tensor tensor = initialize(tensor1->col);
-  for (int i=0; i<tensor.col; i++) {
-    tensor.value[i] = tensor1->value[i] * tensor2->value[i];
-  }
-  return tensor;
-}
-
-void print_tensor(Tensor *tensor) {
   printf("[");
-  for (int i=0; i<tensor->col * tensor->row; i++)
-    printf((i == tensor->col - 1) ? "%1.4f " : "%1.4f, ", tensor->value[i]);
+  int64 size = get_size(tensor->ndim, tensor->shape);
+  for (int32 i=0; i<size; i++) {
+    printf(((i) == (size - 1)) ? "%1.4f " : "%1.4f, ", tensor->value[i]);
+  }
   printf("]\n");
 }
