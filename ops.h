@@ -26,6 +26,9 @@ Tensor *dotprod_t(
 );
 
 /* Common Ops */
+float64 mean(
+  Tensor *y
+);
 
 /* Math Ops */
 

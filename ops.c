@@ -65,3 +65,15 @@ Tensor *dotprod_t(
   }
   return c;
 }
+
+float64 mean(
+  Tensor *y
+) {
+  float64 _sum = 0.0f;
+  int64 _size = get_size(y->ndim, y->shape);
+
+  for (int32 i=0; i<_size; i++) {
+    _sum += y->value[i];
+  }
+  return (_sum) / (_size);
+}
