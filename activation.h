@@ -22,6 +22,12 @@ Tensor *parametric_relu_a(
   Tensor *y,
   float64 k
 );
+
+// Gradients
+Tensor *sigmoid_grad(
+  Tensor *y
+);
+
 void print_t(Tensor *t);
 
 #endif

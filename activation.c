@@ -49,6 +49,17 @@ Tensor *parametric_relu_a(
   return a;
 }
 
+
+Tensor *sigmoid_grad(
+  Tensor *y
+) {
+  Tensor *sigmoid = sigmoid_a(y);
+  Tensor *result = initialize(sigmoid->ndim, sigmoid->shape);
+  for (int32 i=0; i<get_size(result->ndim, result->shape); i++)
+    result->value[i] = (sigmoid->value[i]) * (1.0 - (sigmoid->value[i]));
+  return result;
+}
+
 void print_t(
   Tensor *t
 ) {

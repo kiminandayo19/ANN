@@ -6,6 +6,7 @@
 typedef long long int int64;
 typedef int int32;
 typedef double float64;
+typedef float float32;
 
 typedef struct {
   size_t ndim;
